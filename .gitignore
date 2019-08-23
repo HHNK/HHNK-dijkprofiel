@@ -102,3 +102,7 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+models/
+*.pik
+*.csv
+dijkprofielen_13-4_primair
