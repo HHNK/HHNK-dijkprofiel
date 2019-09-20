@@ -363,9 +363,9 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("profiles", required=True)
-    parser.add_argument("outname", default="data/charpoints_generated_12-2")
-    parser.add_argument("modelpath", default="models/model_2019-09-19T14:34_95p_fryslan_dijknet.pt")
+    parser.add_argument("--profiles", help="input surfaceline csv.", required=True)
+    parser.add_argument("--outname", help="outputname for the annotation file.", default="data/charpoints_scriptgenerated_12-2")
+    parser.add_argument("--modelpath", help="path to the annotation model file.", default="models/model_2019-09-19T14:34_95p_fryslan_dijknet.pt")
     args = parser.parse_args()
     main(args)
 
