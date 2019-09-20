@@ -209,6 +209,10 @@ def convert_tool_data(surfacelines):
 
 
 def main(args):
+    """Makes annotations for a surfaceline.csv style input file.
+    
+        See the dijkprofile_annotation notebook for further comments.
+    """
     class_dict = {
         'leeg': 0,
         'Maaiveld binnenwaarts': 1,
@@ -245,7 +249,7 @@ def main(args):
     # TODO next lines in function
 
     # path to the surfacelines and characteristic points files.
-    surfacelines_path = args.profiles
+    surfacelines_path = args.inputfile
 
     # names for the new pickles, can leave like this to overwrite each time if you just need the csv result.
     filename_dijkprofile_test_dict = 'pickles/test_dijkprofile_dict.pik'
@@ -294,7 +298,7 @@ def main(args):
     # final code
     inference_profile_dict = profile_dict_test
     inference_surfacelines = surfaceline_dict_test
-    output_csv_basename = args.outname
+    output_csv_basename = args.outputfile
 
     model.eval()
 
@@ -308,8 +312,6 @@ def main(args):
     outputs = model(torch.tensor(accumulator).to(device).float())
     flat_output = torch.argmax(outputs, dim=1).cpu()
     predictions = flat_output.numpy()
-
-
 
     header = ["LOCATIONID", "X_Maaiveld binnenwaarts", "Y_Maaiveld binnenwaarts", "Z_Maaiveld binnenwaarts", "X_Insteek sloot polderzijde", "Y_Insteek sloot polderzijde", "Z_Insteek sloot polderzijde", "X_Slootbodem polderzijde", "Y_Slootbodem polderzijde", "Z_Slootbodem polderzijde", "X_Slootbodem dijkzijde", "Y_Slootbodem dijkzijde", "Z_Slootbodem dijkzijde", "X_Insteek sloot dijkzijde", "Y_Insteek sloot dijkzijde", "Z_Insteek sloot dijkzijde", "X_Teen dijk binnenwaarts", "Y_Teen dijk binnenwaarts", "Z_Teen dijk binnenwaarts", "X_Kruin binnenberm", "Y_Kruin binnenberm", "Z_Kruin binnenberm", "X_Insteek binnenberm", "Y_Insteek binnenberm", "Z_Insteek binnenberm", "X_Kruin binnentalud", "Y_Kruin binnentalud", "Z_Kruin binnentalud", "X_Verkeersbelasting kant binnenwaarts", "Y_Verkeersbelasting kant binnenwaarts", "Z_Verkeersbelasting kant binnenwaarts", "X_Verkeersbelasting kant buitenwaarts", "Y_Verkeersbelasting kant buitenwaarts", "Z_Verkeersbelasting kant buitenwaarts", "X_Kruin buitentalud", "Y_Kruin buitentalud", "Z_Kruin buitentalud", "X_Insteek buitenberm", "Y_Insteek buitenberm", "Z_Insteek buitenberm", "X_Kruin buitenberm", "Y_Kruin buitenberm", "Z_Kruin buitenberm", "X_Teen dijk buitenwaarts", "Y_Teen dijk buitenwaarts", "Z_Teen dijk buitenwaarts", "X_Insteek geul", "Y_Insteek geul", "Z_Insteek geul", "X_Teen geul", "Y_Teen geul", "Z_Teen geul", "X_Maaiveld buitenwaarts", "Y_Maaiveld buitenwaarts", "Z_Maaiveld buitenwaarts"]
 
@@ -362,9 +364,9 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--profiles", help="input surfaceline csv.", required=True)
-    parser.add_argument("--outname", help="outputname for the annotation file.", default="data/charpoints_scriptgenerated_12-2.csv")
-    parser.add_argument("--modelpath", help="path to the annotation model file.", default="models/dijknet_95p.pt")
+    parser.add_argument("--inputfile", help="path to the input csv file containing the surfacelines, ie path/to/surfacelines.csv", required=True)
+    parser.add_argument("--outputfile", help="name and path for the annotation output file, ie path/to/charpoints.csv", default="data/charpoints_scriptgenerated.csv")
+    parser.add_argument("--modelpath", help="path to the annotation model file, ie path/to/model.pt", default="models/dijknet_95p.pt")
     args = parser.parse_args()
     main(args)
 
