@@ -273,8 +273,7 @@ def main(args):
 
     # TODO next lines in function
 
-    device = "cuda:0"
-    # device = "cpu:0"
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # PATH = "models/model_2019-07-24T16:32_95_dijknet.pt"
     # PATH = "models/model_2019-07-24T16:57_95_PLUS_dijknet.pt"
@@ -365,7 +364,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--profiles", help="input surfaceline csv.", required=True)
     parser.add_argument("--outname", help="outputname for the annotation file.", default="data/charpoints_scriptgenerated_12-2.csv")
-    parser.add_argument("--modelpath", help="path to the annotation model file.", default="models/model_2019-09-19T14:34_95p_fryslan_dijknet.pt")
+    parser.add_argument("--modelpath", help="path to the annotation model file.", default="models/dijknet_95p.pt")
     args = parser.parse_args()
     main(args)
 
