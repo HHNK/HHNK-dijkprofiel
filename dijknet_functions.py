@@ -1,11 +1,11 @@
 # imports
 from __future__ import print_function, division
 import numpy as np
+from IPython.core.debugger import set_trace
 import torch.nn.functional as F
 import csv
 import torch
 import torch.nn as nn
-from tqdm import tqdm
 import time
 import pickle
 from sklearn.preprocessing import StandardScaler
@@ -14,27 +14,80 @@ import torch
 import pandas as pd
 import glob
 import joblib
+import seaborn as sns
 import datetime 
+import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
 from operator import itemgetter
 from torch.autograd import Variable
 from PIL import Image
-import argparse
-# Ignore warnings
-import warnings
-warnings.filterwarnings("ignore")
+from torch.utils import data
+from sklearn.model_selection import train_test_split
 
-def setup_folders():
-    # setup folders.
-    os.makedirs("data", exist_ok=True)
-    os.makedirs("models", exist_ok=True)
-    os.makedirs("pickles", exist_ok=True)
+ben_conversion_dict = {
+    "": "leeg",
+    "101_Q19_2" : "buitenkruin",
+    "101_Q19_3" : "binnenkruin",
+    "101_Q19_5" : "binnenteen",
+    "105_T09_11": "insteek_sloot",
+    "811_T13_8" : "leeg",
+    "351_T03_10" : "leeg",
+    "_T01_KKW" : "leeg",
+    "108_Q06_250" : "leeg",
+    "303_Q05_1": "leeg",
+    "353__11" : "leeg",
+    "_T00_17" : "leeg",
+    "109_Q08_13" : "leeg",
+    "_Q07_KDM" : "leeg",
+    "_Q07_KDW" : "leeg",
+    '0' : "leeg",
+    None : "leeg",
+    'nan' : "leeg"
+}
+class_dict_regionaal = {
+    "leeg": 0,
+    "startpunt": 1,
+    "buitenkruin": 2,
+    "binnenkruin": 3,
+    "binnenteen": 4,
+    "insteek_sloot": 5
+}
 
+class_dict = {
+    'leeg': 0,
+    'Maaiveld binnenwaarts': 1,
+    'Insteek sloot polderzijde': 2,
+    'Slootbodem polderzijde': 3,
+    'Slootbodem dijkzijde': 4,
+    'Insteek sloot dijkzijde': 5,
+    'Teen dijk binnenwaarts': 6,
+    'Kruin binnenberm': 7,
+    'Insteek binnenberm': 8,
+    'Kruin binnentalud': 9,
+    'Verkeersbelasting kant binnenwaarts': 9, # 10
+    'Verkeersbelasting kant buitenwaarts': 10,
+    'Kruin buitentalud': 10, #12
+    'Insteek buitenberm': 11,
+    'Kruin buitenberm': 12,
+    'Teen dijk buitenwaarts': 13,
+    'Insteek geul': 14,
+    'Teen geul': 15,
+    'Maaiveld buitenwaarts': 16,
+}
+
+# set the class dict to either the full class_dict for non-regional keringen (leave it)
+# or set it to the smaller dict for regional keringen by uncommenting this line
+
+# class_dict = class_dict_regionaal
+inverse_class_dict = {v: k for k, v in class_dict.items()}
+
+# manual mappings to get the correct names for plotting later
+if "11" in inverse_class_dict:
+    inverse_class_dict["10"] = 'Kruin buitentalud'
+    
 
 class Double_conv(nn.Module):
-
     '''(conv => ReLU) * 2 => MaxPool2d'''
-
     def __init__(self, in_ch, out_ch, p):
         """
         Args:
@@ -50,19 +103,15 @@ class Double_conv(nn.Module):
             nn.Conv1d(out_ch, out_ch, 7, padding=3, stride=1),
             nn.ReLU(inplace=True),
             nn.Dropout(p=p)
-#             nn.Conv1d(out_ch, out_ch, 9, padding=3, stride=1),
-#             nn.ReLU(inplace=True)
         )
-
     def forward(self, x):
         x = self.conv(x)
         return x
 
 
 class Conv_down(nn.Module):
-
     '''(conv => ReLU) * 2 => MaxPool2d'''
-
+    
     def __init__(self, in_ch, out_ch, p):
         """
         Args:
@@ -80,9 +129,8 @@ class Conv_down(nn.Module):
 
 
 class Conv_up(nn.Module):
-
     '''(conv => ReLU) * 2 => MaxPool2d'''
-
+    
     def __init__(self, in_ch, out_ch, p):
         """
         Args:
@@ -130,6 +178,7 @@ class Dijknet(nn.Module):
         self.Conv_final = nn.Conv1d(out_channels, out_channels, 1, padding=0, stride=1)
 
     def forward(self, x):
+        input_image = x
         x, conv1 = self.Conv_down1(x)
         x, conv2 = self.Conv_down2(x)
         x, conv3 = self.Conv_down3(x)
@@ -143,7 +192,7 @@ class Dijknet(nn.Module):
         x = self.Conv_out(x)
         x = self.Conv_final(x)
         return x
-
+    
 def ffill(arr):
     """Forward fill utility function."""
     mask = np.isnan(arr)
@@ -152,17 +201,17 @@ def ffill(arr):
     out = arr[np.arange(idx.shape[0])[:,None], idx]
     return out
 
-def convert_tool_data(surfacelines):
+def convert_tool_data(annotation_tuples):
     profile_dict = {}
     surfaceline_dict_total = {}
-    for source_surfacelines in surfacelines:
+    for source_surfacelines, source_characteristicpoints in annotation_tuples:
         surfaceline_dict = {}
 
         # read the coordinates and collect to surfaceline_dict
         with open(source_surfacelines) as csvfile:
             surfacereader = csv.reader(csvfile, delimiter=';', quotechar='|')
             header = next(surfacereader)
-            print("header: {}".format(header)) # not very useful
+            # print("header: {}".format(header)) # not very useful
             for row in surfacereader:
                 location = row[0]
                 surfaceline_dict[location] = []
@@ -179,119 +228,120 @@ def convert_tool_data(surfacelines):
 
         print("loaded surfacelines for {} locations".format(len(surfaceline_dict.keys())))
 
+        cpoints_dict = {}
+        # read the characteristicpoints and save to cpoints_dict
+        with open(source_characteristicpoints) as csvfile:
+            cpointsreader = csv.reader(csvfile, delimiter=';', quotechar='|')
+            header = next(cpointsreader)
+            for row in cpointsreader:
+                location = row[0]
+                point_dict = {}
+                for i in range(1, len(row)-2, 3):
+                    try:
+                        x = float(row[i])
+                        y = float(row[i+1])
+                        z = float(row[i+2])
+
+                        point_dict[header[i][2:]] = (x,y,z)
+                    except:
+                        pass
+                cpoints_dict[location] = point_dict
+
+        print("loaded characteristic points for {} locations".format(len(cpoints_dict.keys())))
 
         # transform the data to a usable format, save to profile_dict
+        X_samples_list = []
+        Y_samples_list = []
+        location_list = []
         for location in surfaceline_dict.keys():
             heights = np.array(surfaceline_dict[location])[:,2].astype(np.float32)
+            x_y_s = np.array(surfaceline_dict[location])[:,:2].astype(np.float32)
+            labels = np.zeros(len(heights))
+            for i, (key, point) in enumerate(cpoints_dict[location].items()):
+                # if the point is not empty, find the nearest point in the surface file, 
+                # rounding errors require matching by distance per point
+                if point == (-1.0, -1.0, -1.0):
+                    continue
+
+                distances = []
+                for idx, surfacepoint in enumerate(surfaceline_dict[location]):
+                    dist = np.linalg.norm(np.array(surfacepoint)-np.array(point))
+                    distances.append((idx, dist))
+                (idx, dist) = sorted(distances, key=itemgetter(1))[0]
+                labels[idx] = class_dict[key]
+
+            for i in range(1, len(labels)):
+                if labels[i] == 0.0:
+                    labels[i] = labels[i-1]
 
             z_tmp = np.zeros(352)
-            profile_length = len(heights)
+            labels_tmp = np.zeros(352)
+            profile_length = labels.shape[0]
             if profile_length < 352:
                 z_tmp[:profile_length] = np.array(heights, dtype=np.float32)[:profile_length]
+                labels_tmp[:profile_length] = np.array(labels)[:profile_length]
                 z_tmp[profile_length:] = heights[profile_length-1]
+                labels_tmp[profile_length:] = labels[profile_length-1]
                 heights = z_tmp
+                labels = labels_tmp
             else:
                 heights = heights[:352]
+                labels = labels[:352]
 
             profile_dict[location] = {}
             profile_dict[location]['profile'] = heights.astype(np.float32)
-            # profile_dict[location]['label'] = labels.astype(np.int32)
+            profile_dict[location]['label'] = labels.astype(np.int32)
 
         for key, value in surfaceline_dict.items():
             surfaceline_dict_total[key] = value
     
     return profile_dict, surfaceline_dict_total
 
-
-
-def main(args):
-    """Makes annotations for a surfaceline.csv style input file.
+class DijkprofileDataset(data.Dataset):
+    """Pytorch custom dataset class to use with the pytorch dataloader."""
     
-        See the dijkprofile_annotation notebook for further comments.
-    """
-    class_dict = {
-        'leeg': 0,
-        'Maaiveld binnenwaarts': 1,
-        'Insteek sloot polderzijde': 2,
-        'Slootbodem polderzijde': 3,
-        'Slootbodem dijkzijde': 4,
-        'Insteek sloot dijkzijde': 5,
-        'Teen dijk binnenwaarts': 6,
-        'Kruin binnenberm': 7,
-        'Insteek binnenberm': 8,
-        'Kruin binnentalud': 9,
-        'Verkeersbelasting kant binnenwaarts': 9, # 10
-        'Verkeersbelasting kant buitenwaarts': 10,
-        'Kruin buitentalud': 10, #12
-        'Insteek buitenberm': 11,
-        'Kruin buitenberm': 12,
-        'Teen dijk buitenwaarts': 13,
-        'Insteek geul': 14,
-        'Teen geul': 15,
-        'Maaiveld buitenwaarts': 16,
-    }
-
-    # set the class dict to either the full class_dict for non-regional keringen (leave it)
-    # or set it to the smaller dict for regional keringen by uncommenting this line
-
-    # class_dict = class_dict_regionaal
-    inverse_class_dict = {v: k for k, v in class_dict.items()}
-
-    # manual mappings to get the correct names for plotting later
-    if "11" in inverse_class_dict:
-        inverse_class_dict["10"] = 'Kruin buitentalud'
+    def __init__(self, profile_dict, partition):
+        'init'
+        self.data_dict = profile_dict
+        self.list_IDs = partition
+    
+    def __len__(self):
+        return len(self.list_IDs)
+    
+    def __getitem__(self, index):
+        ID = self.list_IDs[index]
+        X = self.data_dict[ID]['profile'].reshape(1,-1).astype(np.float32)
+        y = self.data_dict[ID]['label'].reshape(1,-1)
+        return X, y
+    
+    def __str__(self):
+        return "<Dijkprofile dataset: datapoints={}>".format(len(self.list_IDs))
 
 
-    # TODO next lines in function
-
-    # path to the surfacelines and characteristic points files.
-    surfacelines_path = args.inputfile
-
-
-    surfaceline_list = [
-        (surfacelines_path)
-    ]
-
-    profile_dict_test, surfaceline_dict_test = convert_tool_data(surfaceline_list)
-
-    # scale the new profiles.
-    scaler = joblib.load("pickles/scaler.pik") 
-    for i, key in enumerate(profile_dict_test.keys()):
-        profile_dict_test[key]['profile'] = scaler.transform(profile_dict_test[key]['profile'].reshape(-1,1)).reshape(-1)
-        
-    print("done!")
-
-    # TODO next lines in function
-
+def get_loss_train(model, data_train, criterion):
+    """Calculate loss over train set"""
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-    # PATH = "models/model_2019-07-24T16:32_95_dijknet.pt"
-    # PATH = "models/model_2019-07-24T16:57_95_PLUS_dijknet.pt"
-    PATH = args.modelpath
-
-    # construct network
-    model = Dijknet(1,17)
-    # load trained weights into network
-    print("DEVICE: ", device)
-    
-    model.load_state_dict(torch.load(PATH, map_location=torch.device(device)))
-    # set network to inference/eval mode
     model.eval()
-    # copy network to device
-    model.to(device)
-    print("loaded model!")
+    total_acc = 0
+    total_loss = 0
+    for batch, (images, masks) in enumerate(data_train):
+        with torch.no_grad():
+            images = Variable(images.to(device))
+            masks = Variable(masks.to(device))
+            outputs = model(images)
+            loss = criterion(outputs, masks)
+            preds = torch.argmax(outputs, dim=1).float()
+            acc = accuracy_check_for_batch(masks.cpu(), preds.cpu(), images.size()[0])
+            total_acc = total_acc + acc
+            total_loss = total_loss + loss.cpu().item()
+    return total_acc/(batch+1), total_loss/(batch + 1)
 
-    # final code
-    inference_profile_dict = profile_dict_test
-    inference_surfacelines = surfaceline_dict_test
-    output_csv_basename = args.outputfile
-
+def make_annotations(inference_profile_dict, inference_surfacelines, model, output_csv_basename, device):
     model.eval()
-
     accumulator = np.zeros((len(inference_profile_dict), 352))
     for i, key in enumerate(inference_profile_dict.keys()):
         accumulator[i] = inference_profile_dict[key]['profile'][:352]
-        
+
     print("total profiles to predict: ", accumulator.shape[0])
     accumulator = accumulator.reshape(accumulator.shape[0],1,352)
 
@@ -308,11 +358,11 @@ def main(args):
         for i, key in enumerate(inference_profile_dict.keys()):
             # get predictions
             profile_pred = predictions[i]
-            
+
             # construct dict with key for each row
             row_dict = {key:-1 for key in header}
             row_dict["LOCATIONID"] = key
-            
+
             # loop through predictions and for the entries
             used_classes = []
             prev_class_n = 999 # key thats not in the inverse_class_dict
@@ -322,17 +372,17 @@ def main(args):
                 if class_n != prev_class_n:
                     # get class name
                     class_name = inverse_class_dict[class_n]
-                    
+
                     # if this index is different from the last, this is the characteristicpoint
                     used_classes.append(prev_class_n)
-                    
+
                     # set prev_class to the new class
                     prev_class_n = class_n
-                    
+
                     # construct the csv row with the new class
-                    if index >= len(surfaceline_dict_test[key]):
+                    if index >= len(inference_surfacelines[key]):
                         continue
-                    
+
                     (x,y,z) = inference_surfacelines[key][index]
                     row_dict["X_" + class_name] = round(x, 3)
                     row_dict["Y_" + class_name] = round(y, 3)
@@ -343,17 +393,6 @@ def main(args):
             for columnname in header:
                 row.append(row_dict[columnname])
             writer.writerow(row)
-        
+
     csvFile.close()
     print("done!")
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("inputfile", help="path to the input csv file containing the surfacelines, ie path/to/surfacelines.csv")
-    parser.add_argument("outputfile", help="name and path for the annotation output file, ie path/to/charpoints.csv", default="data/charpoints_scriptgenerated.csv")
-    parser.add_argument("--modelpath", help="path to the annotation model file, ie path/to/model.pt", default="models/dijknet_95p.pt")
-    args = parser.parse_args()
-    main(args)
-
-    
