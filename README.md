@@ -1,3 +1,6 @@
+# Update
+Future development of this code will be on the version at the Knowledge Center of Het Waterschaphuis: [https://gitlab.com/hetwaterschapshuis/kenniscentrum/tooling/dijkprofiel-annotator](https://gitlab.com/hetwaterschapshuis/kenniscentrum/tooling/dijkprofiel-annotator).
+
 # HHNK-dijkprofiel
 This repository contains code for annotating dijk profiles, specifically the profiles generated for use with the [qDAMEEdit tool](http://www.twisq.nl/qdamedit/manual.pdf) The approach taken to determine the characteristic points is based on applying Unet in 1D.
 
