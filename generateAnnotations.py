@@ -255,7 +255,7 @@ def main(args):
     profile_dict_test, surfaceline_dict_test = convert_tool_data(surfaceline_list)
 
     # scale the new profiles.
-    scaler = joblib.load("/workspace/bin/scaler.pik") 
+    scaler = joblib.load(args.scalerpath) 
     for i, key in enumerate(profile_dict_test.keys()):
         profile_dict_test[key]['profile'] = scaler.transform(profile_dict_test[key]['profile'].reshape(-1,1)).reshape(-1)
         
@@ -353,6 +353,7 @@ if __name__ == "__main__":
     parser.add_argument("inputfile", help="path to the input csv file containing the surfacelines, ie path/to/surfacelines.csv")
     parser.add_argument("outputfile", help="name and path for the annotation output file, ie path/to/charpoints.csv", default="data/charpoints_scriptgenerated.csv")
     parser.add_argument("--modelpath", help="path to the annotation model file, ie path/to/model.pt", default="/workspace/bin/dijknet_95p.pt")
+    parser.add_argument("--scalerpath", help="path to scaler pickle, ie path/to/scaler.pik", default="/workspace/bin/scaler.pik")
     args = parser.parse_args()
     main(args)
 
